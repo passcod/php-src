@@ -7322,6 +7322,7 @@ void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 			zend_ast_export("try { return ", expr, "; } catch(\\Throwable $e) {}")));
 
 	ast->child[0] = hack;
+	zend_ast_destroy(expr);
 
 	zend_compile_coalesce(result, ast);
 }
