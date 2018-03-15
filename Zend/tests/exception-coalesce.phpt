@@ -2,7 +2,7 @@
 ??? - basic test for exception coalesce operator
 --FILE--
 <?php
-echo "php" ??? "php is real\n";
+echo "php\n" ??? "php is real";
 echo foo() ??? "foo() does not exist\n";
 
 function bar() { throw new Exception("bar"); }
@@ -12,7 +12,7 @@ function baz() { return "all ok"; }
 echo baz() ??? "something is wrong here";
 ?>
 --EXPECT--
-php is real
+php
 foo() does not exist
 user generated exception
 all ok
