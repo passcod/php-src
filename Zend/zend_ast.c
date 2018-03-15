@@ -573,6 +573,7 @@ ZEND_API void zend_ast_apply(zend_ast *ast, zend_ast_apply_func fn) {
  *   90     right           = += -= *= /= .= %= &= |= ^= <<= >>= **=
  *  100     left            ? :
  *  110     right           ??
+ *  115     right           ???
  *  120     left            ||
  *  130     left            &&
  *  140     left            |
@@ -1426,6 +1427,7 @@ simple_list:
 		case ZEND_AST_YIELD_FROM:
 			PREFIX_OP("yield from ", 85, 86);
 		case ZEND_AST_COALESCE: BINARY_OP(" ?? ", 110, 111, 110);
+		case ZEND_AST_EXCEPTION_COALESCE: BINARY_OP(" ??? ", 110, 111, 110);
 		case ZEND_AST_STATIC:
 			smart_str_appends(str, "static $");
 			zend_ast_export_name(str, ast->child[0], 0, indent);

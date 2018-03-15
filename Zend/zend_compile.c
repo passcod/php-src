@@ -7313,6 +7313,21 @@ void zend_compile_coalesce(znode *result, zend_ast *ast) /* {{{ */
 }
 /* }}} */
 
+void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
+{
+	zend_ast *expr_ast = ast->child[0];
+	zend_ast *default_ast = ast->child[1];
+
+	zend_ast *hack = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
+		zend_ast_create_zval_from_str(
+			zend_ast_export("try { return ", expr_ast, "; } catch(\\Throwable $e) {}")));
+
+	ast->child[0] = hack;
+
+	zend_compile_coalesce(result, ast);
+}
+/* }}} */
+
 void zend_compile_print(znode *result, zend_ast *ast) /* {{{ */
 {
 	zend_op *opline;
@@ -8265,6 +8280,9 @@ void zend_compile_expr(znode *result, zend_ast *ast) /* {{{ */
 			return;
 		case ZEND_AST_COALESCE:
 			zend_compile_coalesce(result, ast);
+			return;
+		case ZEND_AST_EXCEPTION_COALESCE:
+			zend_compile_exception_coalesce(result, ast);
 			return;
 		case ZEND_AST_PRINT:
 			zend_compile_print(result, ast);
