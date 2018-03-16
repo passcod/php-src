@@ -220,7 +220,7 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %token T_NS_SEPARATOR    "\\ (T_NS_SEPARATOR)"
 %token T_ELLIPSIS        "... (T_ELLIPSIS)"
 %token T_COALESCE        "?? (T_COALESCE)"
-%token T_EXCEPTION_COALESCE        "??? (T_EXCEPTION_COALESCE)"
+%token T_EXCEPTION_COALESCE "??? (T_EXCEPTION_COALESCE)"
 %token T_POW             "** (T_POW)"
 %token T_POW_EQUAL       "**= (T_POW_EQUAL)"
 
