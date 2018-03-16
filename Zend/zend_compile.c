@@ -32,6 +32,7 @@
 #include "zend_multibyte.h"
 #include "zend_language_scanner.h"
 #include "zend_inheritance.h"
+#include "zend_smart_str.h"
 #include "zend_vm.h"
 
 #define SET_NODE(target, src) do { \
@@ -7315,16 +7316,46 @@ void zend_compile_coalesce(znode *result, zend_ast *ast) /* {{{ */
 
 void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 {
-	zend_ast *expr = ast->child[0];
+	zend_ast *lhs = ast->child[0];
+	zend_ast *rhs = ast->child[1];
 
-	zend_ast *hack = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
+	char idstr[20];
+	sprintf(idstr, "EXCO???%013d", rand());
+
+	const char *prefix = "try { return ";
+	char suffix[60];
+	sprintf(suffix, "; } catch (\\Throwable $e) { return '%s'; }", idstr);
+
+	zend_ast *eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
 		zend_ast_create_zval_from_str(
-			zend_ast_export("try { return ", expr, "; } catch(\\Throwable $e) {}")));
+			zend_ast_export(prefix, lhs, suffix)));
+	zend_ast_destroy(lhs);
 
-	ast->child[0] = hack;
-	zend_ast_destroy(expr);
+	zend_string *idzendstring = zend_string_init(idstr, strlen(idstr), 0);
+	zend_ast *idstring = zend_ast_create_zval_from_str(idzendstring);
 
-	zend_compile_coalesce(result, ast);
+	zend_ast *var = zend_ast_create(ZEND_AST_VAR, "_exco");
+	zend_ast *assign = zend_ast_create(ZEND_AST_ASSIGN, var, eval);
+	zend_ast *equal = zend_ast_create_binary_op(ZEND_IS_IDENTICAL, var, idstring);
+	zend_ast *and = zend_ast_create_binary_op(ZEND_AST_AND, assign, equal);
+	zend_ast *ternary = zend_ast_create(ZEND_AST_CONDITIONAL, and, rhs, var);
+
+	/*
+	TERNARY(
+		AND(
+			ASSIGN(VAR, EVAL(LHS expr)),
+			EQUAL(VAR, idstring)
+		),
+		RHS expr,
+		VAR
+	)
+
+	or: ($_exco = eval(...) && $_exco == idstring) ? RHS : $_exco;
+	*/
+
+	zend_compile_coalesce(result, ternary);
+	// free(prefix);
+	// free(suffix);
 }
 /* }}} */
 
