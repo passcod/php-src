@@ -2971,8 +2971,14 @@ zend_bool zend_list_has_assign_to_self(zend_ast *list_ast, zend_ast *expr_ast) /
 
 void zend_compile_assign(znode *result, zend_ast *ast) /* {{{ */
 {
+	printf("ast kind: %i\n", ast->kind);
+	printf("ast attr: %i\n", ast->attr);
+
 	zend_ast *var_ast = ast->child[0];
 	zend_ast *expr_ast = ast->child[1];
+
+	printf("expr kind: %i\n", expr_ast->kind);
+	printf("expr attr: %i\n", expr_ast->attr);
 
 	znode var_node, expr_node;
 	zend_op *opline;
@@ -2983,6 +2989,9 @@ void zend_compile_assign(znode *result, zend_ast *ast) /* {{{ */
 	}
 
 	zend_ensure_writable_variable(var_ast);
+
+	printf("var kind: %i\n", var_ast->kind);
+	printf("var attr: %i\n", var_ast->attr);
 
 	switch (var_ast->kind) {
 		case ZEND_AST_VAR:
@@ -7317,7 +7326,6 @@ void zend_compile_coalesce(znode *result, zend_ast *ast) /* {{{ */
 void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 {
 	zend_ast *lhs = ast->child[0];
-	zend_ast *rhs = ast->child[1];
 
 	int id =  ((rand() % 9) - 1) * 10000
 		+ ((rand() % 9) - 1) * 1000
@@ -7325,51 +7333,43 @@ void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 		+ ((rand() % 9) - 1) * 10
 		+ ((rand() % 9) - 1) * 1;
 
-	zval idz;
-	ZVAL_LONG(&idz, id);
+	// Try eval in eval
+	// Make up the normal hack
+	// then zend_ast_export wrapped in the $_exco = ... && etc
+	// then substitute that.
 
 	const char *prefix = "try { return ";
 	char suffix[47];
 	sprintf(suffix, "; } catch (\\Throwable $e) { return %i; } ?>", id);
 
-	zend_string *lhs_str = zend_ast_export(prefix, lhs, suffix);
-	zend_ast_destroy(lhs);
+	printf("ZEND_AST_CONDITIONAL: %i\n", ZEND_AST_CONDITIONAL);
+	printf("ZEND_AST_AND: %i\n", ZEND_AST_AND);
+	printf("ZEND_AST_ASSIGN: %i\n", ZEND_AST_ASSIGN);
+	printf("ZEND_AST_VAR: %i\n", ZEND_AST_VAR);
+	printf("ZEND_AST_INCLUDE_OR_EVAL: %i\n", ZEND_AST_INCLUDE_OR_EVAL);
+	printf("ZEND_EVAL: %i\n", ZEND_EVAL);
+	printf("ZEND_IS_IDENTICAL: %i\n", ZEND_IS_IDENTICAL);
 
-	zend_ast *ternary = zend_ast_create(ZEND_AST_CONDITIONAL,
-		zend_ast_create_binary_op(259,
+	/* ($_exco = eval(...) && $_exco == idstring) ? RHS : $_exco; */
+
+	zend_ast *exco = zend_ast_create(ZEND_AST_VAR,
+		zend_ast_create_znode(
+			"_exco"));
+
+	ast->child[0] = zend_ast_create(ZEND_AST_AND,
 			zend_ast_create(ZEND_AST_ASSIGN,
-				zend_ast_create(ZEND_AST_VAR, "_exco"),
+				exco,
 				zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
-					zend_ast_create_zval_from_str(lhs_str))),
-			zend_ast_create_binary_op(15,
-				zend_ast_create(ZEND_AST_VAR, "_exco"),
-				zend_ast_create_zval(&idz))),
-		rhs,
-		zend_ast_create(ZEND_AST_VAR, "_exco"));
+					zend_ast_create_zval_from_str(
+						zend_ast_export(prefix, lhs, suffix)))),
+			zend_ast_create_binary_op(ZEND_IS_IDENTICAL,
+				exco,
+				zend_ast_create_zval_from_long(id)));
 
-	/*
-	AST_CONDITIONAL
-        cond: AST_BINARY_OP
-            flags: BINARY_BOOL_AND (259)
-            left: AST_ASSIGN
-                var: AST_VAR
-                    name: "_exco"
-                expr: AST_INCLUDE_OR_EVAL
-                    flags: EXEC_EVAL (1)
-                    expr: ""
-            right: AST_BINARY_OP
-                flags: BINARY_IS_IDENTICAL (15)
-                left: AST_VAR
-                    name: "_exco"
-                right: "idstring"
-        true: "RHS"
-        false: AST_VAR
-            name: "_exco"
+	ast->child[2] = exco;
 
-	or: ($_exco = eval(...) && $_exco == idstring) ? RHS : $_exco;
-	*/
-
-	zend_compile_coalesce(result, ternary);
+	zend_ast_destroy(lhs);
+	zend_compile_conditional(result, ast);
 	// free(prefix);
 	// free(suffix);
 }
@@ -8261,6 +8261,10 @@ void zend_compile_expr(znode *result, zend_ast *ast) /* {{{ */
 	/* CG(zend_lineno) = ast->lineno; */
 	CG(zend_lineno) = zend_ast_get_lineno(ast);
 
+	printf("kind: %i\n", ast->kind);
+	printf("attr: %i\n", ast->attr);
+	printf("line: %i\n\n", ast->lineno);
+
 	switch (ast->kind) {
 		case ZEND_AST_ZVAL:
 			ZVAL_COPY(&result->u.constant, zend_ast_get_zval(ast));
@@ -8378,7 +8382,6 @@ void zend_compile_expr(znode *result, zend_ast *ast) /* {{{ */
 			zend_compile_func_decl(result, ast);
 			return;
 		default:
-			printf("%i\n", ast->kind);
 			ZEND_ASSERT(0 /* not supported */);
 	}
 }
