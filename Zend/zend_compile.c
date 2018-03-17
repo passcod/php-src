@@ -7319,13 +7319,18 @@ void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 	zend_ast *lhs = ast->child[0];
 	zend_ast *rhs = ast->child[1];
 
-	int id = rand();
+	int id =  ((rand() % 9) - 1) * 10000
+		+ ((rand() % 9) - 1) * 1000
+		+ ((rand() % 9) - 1) * 100
+		+ ((rand() % 9) - 1) * 10
+		+ ((rand() % 9) - 1) * 1;
+
 	zval idz;
 	ZVAL_LONG(&idz, id);
 
 	const char *prefix = "try { return ";
-	char *suffix = {0};
-	sprintf(suffix, "; } catch (\\Throwable $e) { return %i; }", id);
+	char suffix[47];
+	sprintf(suffix, "; } catch (\\Throwable $e) { return %i; } ?>", id);
 
 	zend_string *lhs_str = zend_ast_export(prefix, lhs, suffix);
 	zend_ast_destroy(lhs);
@@ -8373,6 +8378,7 @@ void zend_compile_expr(znode *result, zend_ast *ast) /* {{{ */
 			zend_compile_func_decl(result, ast);
 			return;
 		default:
+			printf("%i\n", ast->kind);
 			ZEND_ASSERT(0 /* not supported */);
 	}
 }
