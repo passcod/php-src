@@ -7319,36 +7319,47 @@ void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 	zend_ast *lhs = ast->child[0];
 	zend_ast *rhs = ast->child[1];
 
-	char idstr[20];
-	sprintf(idstr, "EXCO???%013d", rand());
+	int id = rand();
+	zval idz;
+	ZVAL_LONG(&idz, id);
 
 	const char *prefix = "try { return ";
-	char suffix[60];
-	sprintf(suffix, "; } catch (\\Throwable $e) { return '%s'; }", idstr);
+	char *suffix = {0};
+	sprintf(suffix, "; } catch (\\Throwable $e) { return %i; }", id);
 
-	zend_ast *eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
-		zend_ast_create_zval_from_str(
-			zend_ast_export(prefix, lhs, suffix)));
+	zend_string *lhs_str = zend_ast_export(prefix, lhs, suffix);
 	zend_ast_destroy(lhs);
 
-	zend_string *idzendstring = zend_string_init(idstr, strlen(idstr), 0);
-	zend_ast *idstring = zend_ast_create_zval_from_str(idzendstring);
-
-	zend_ast *var = zend_ast_create(ZEND_AST_VAR, "_exco");
-	zend_ast *assign = zend_ast_create(ZEND_AST_ASSIGN, var, eval);
-	zend_ast *equal = zend_ast_create_binary_op(ZEND_IS_IDENTICAL, var, idstring);
-	zend_ast *and = zend_ast_create_binary_op(ZEND_AST_AND, assign, equal);
-	zend_ast *ternary = zend_ast_create(ZEND_AST_CONDITIONAL, and, rhs, var);
+	zend_ast *ternary = zend_ast_create(ZEND_AST_CONDITIONAL,
+		zend_ast_create_binary_op(259,
+			zend_ast_create(ZEND_AST_ASSIGN,
+				zend_ast_create(ZEND_AST_VAR, "_exco"),
+				zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
+					zend_ast_create_zval_from_str(lhs_str))),
+			zend_ast_create_binary_op(15,
+				zend_ast_create(ZEND_AST_VAR, "_exco"),
+				zend_ast_create_zval(&idz))),
+		rhs,
+		zend_ast_create(ZEND_AST_VAR, "_exco"));
 
 	/*
-	TERNARY(
-		AND(
-			ASSIGN(VAR, EVAL(LHS expr)),
-			EQUAL(VAR, idstring)
-		),
-		RHS expr,
-		VAR
-	)
+	AST_CONDITIONAL
+        cond: AST_BINARY_OP
+            flags: BINARY_BOOL_AND (259)
+            left: AST_ASSIGN
+                var: AST_VAR
+                    name: "_exco"
+                expr: AST_INCLUDE_OR_EVAL
+                    flags: EXEC_EVAL (1)
+                    expr: ""
+            right: AST_BINARY_OP
+                flags: BINARY_IS_IDENTICAL (15)
+                left: AST_VAR
+                    name: "_exco"
+                right: "idstring"
+        true: "RHS"
+        false: AST_VAR
+            name: "_exco"
 
 	or: ($_exco = eval(...) && $_exco == idstring) ? RHS : $_exco;
 	*/
