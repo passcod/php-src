@@ -7317,6 +7317,7 @@ void zend_compile_coalesce(znode *result, zend_ast *ast) /* {{{ */
 void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 {
 	zend_ast *lhs = ast->child[0];
+	zend_ast *rhs = ast->child[1];
 
 	// init srand() somehow
 	// int id =  ((rand() % 9) - 1) * 10000
@@ -7329,26 +7330,32 @@ void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 
 	// eval(try { return LHS; } catch (\Throwable $e) { return id; })
 	const char *sub_prefix = "try { return ";
-	const char *sub_suffix = "; } catch (\\Throwable $e) { return 892638795; } ?>";
+	const char *sub_suffix = "; } catch (\\Throwable $e) { return 892638795; }";
 
 	zend_string *sub_eval_str = zend_ast_export(sub_prefix, lhs, sub_suffix);
 	zend_ast *sub_eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL,
 		ZEND_EVAL,
 		zend_ast_create_zval_from_str(sub_eval_str));
 
-	zend_ast_destroy(lhs);
+	// zend_ast_destroy(lhs);
 	printf("sub eval: %s\n", ZSTR_VAL(sub_eval_str));
 
 	// eval($_exco = eval(...) && $_exco === id)) ? RHS : eval($_exco);
-	const char *r_prefix = "return ($_exco = ";
-	const char *r_suffix = " && $_exco === 892638795);";
 
-	zend_string *r_eval_str = zend_ast_export(r_prefix, sub_eval, r_suffix);
+	smart_str str = {0};
+	smart_str_appends(&str, "return ($_exco = ");
+	zend_ast_export_ex(&str, sub_eval, 0, 0);
+	smart_str_appends(&str, ") === 892638795 ? (");
+	zend_ast_export_ex(&str, rhs, 0, 0);
+	smart_str_appends(&str, ") : $_exco;");
+	smart_str_0(&str);
+	zend_string *r_eval_str = str.s;
+
 	zend_ast *r_eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL,
 		ZEND_EVAL,
 		zend_ast_create_zval_from_str(r_eval_str));
 
-	zend_ast_destroy(sub_eval);
+	// zend_ast_destroy(sub_eval);
 	printf("r eval: %s\n", ZSTR_VAL(r_eval_str));
 
 	const char *l_str = "return $_exco;";
@@ -7361,6 +7368,7 @@ void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 	// ->child[1] = rhs (already there)
 	ast->child[2] = l_eval;
 
+	// compile as eval instead
 	zend_compile_conditional(result, ast);
 
 	// Try eval in eval
