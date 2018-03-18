@@ -1,7 +1,5 @@
 --TEST--
 ??? - chaining with ??
---SKIPIF--
-<?php if (true) echo 'skip implementation is hacky and merges in null coalesce behaviour'; ?>
 --FILE--
 <?php
 function dual($on, $off = null) {
