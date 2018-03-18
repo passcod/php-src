@@ -32,7 +32,6 @@
 #include "zend_multibyte.h"
 #include "zend_language_scanner.h"
 #include "zend_inheritance.h"
-#include "zend_smart_str.h"
 #include "zend_vm.h"
 
 #define SET_NODE(target, src) do { \
@@ -7319,98 +7318,33 @@ void zend_compile_exception_coalesce(znode *result, zend_ast *ast) /* {{{ */
 	zend_ast *lhs = ast->child[0];
 	zend_ast *rhs = ast->child[1];
 
-	// init srand() somehow
-	// int id =  ((rand() % 9) - 1) * 10000
-	// 	+ ((rand() % 9) - 1) * 1000
-	// 	+ ((rand() % 9) - 1) * 100
-	// 	+ ((rand() % 9) - 1) * 10
-	// 	+ ((rand() % 9) - 1) * 1;
+	/* eval(try { $_exco = (LHS); } catch (\Throwable $e) { $_exco = id; })
+	=> eval without return always returns null... */
+	const char *lhs_prefix = "try { $_exco = (";
+	const char *lhs_suffix = "); } catch (\\Throwable $e) { $_exco = 892638795; }";
 
-	// === The FUCK IT way ===
+	zend_string *lhs_eval_str = zend_ast_export(lhs_prefix, lhs, lhs_suffix);
+	zend_ast *lhs_eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
+		zend_ast_create_zval_from_str(lhs_eval_str));
 
-	// eval(try { return LHS; } catch (\Throwable $e) { return id; })
-	const char *sub_prefix = "try { return ";
-	const char *sub_suffix = "; } catch (\\Throwable $e) { return 892638795; }";
+	zend_ast_destroy(lhs);
+	// printf("lhs eval: %s\n", ZSTR_VAL(lhs_eval_str));
 
-	zend_string *sub_eval_str = zend_ast_export(sub_prefix, lhs, sub_suffix);
-	zend_ast *sub_eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL,
-		ZEND_EVAL,
-		zend_ast_create_zval_from_str(sub_eval_str));
+	/* eval(return ($_exco === id) ? (RHS) : $_exco;)
+	=> ...after a ?? this will always execute AND be the final value! */
+	const char *rhs_prefix = "return ($_exco === 892638795) ? (";
+	const char *rhs_suffix = ") : $_exco;";
 
-	// zend_ast_destroy(lhs);
-	printf("sub eval: %s\n", ZSTR_VAL(sub_eval_str));
+	zend_string *rhs_eval_str = zend_ast_export(rhs_prefix, rhs, rhs_suffix);
+	zend_ast *rhs_eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
+		zend_ast_create_zval_from_str(rhs_eval_str));
 
-	// eval($_exco = eval(...) && $_exco === id)) ? RHS : eval($_exco);
+	zend_ast_destroy(rhs);
+	// printf("rhs eval: %s\n", ZSTR_VAL(rhs_eval_str));
 
-	smart_str str = {0};
-	smart_str_appends(&str, "return ($_exco = ");
-	zend_ast_export_ex(&str, sub_eval, 0, 0);
-	smart_str_appends(&str, ") === 892638795 ? (");
-	zend_ast_export_ex(&str, rhs, 0, 0);
-	smart_str_appends(&str, ") : $_exco;");
-	smart_str_0(&str);
-	zend_string *r_eval_str = str.s;
-
-	zend_ast *r_eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL,
-		ZEND_EVAL,
-		zend_ast_create_zval_from_str(r_eval_str));
-
-	// zend_ast_destroy(sub_eval);
-	printf("r eval: %s\n", ZSTR_VAL(r_eval_str));
-
-	const char *l_str = "return $_exco;";
-	zend_ast *l_eval = zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL,
-		ZEND_EVAL,
-		zend_ast_create_zval_from_str(
-			zend_string_init(l_str, strlen(l_str), 0)));
-
-	ast->child[0] = r_eval;
-	// ->child[1] = rhs (already there)
-	ast->child[2] = l_eval;
-
-	// compile as eval instead
-	zend_compile_conditional(result, ast);
-
-	// Try eval in eval
-	// Make up the normal hack
-	// then zend_ast_export wrapped in the $_exco = ... && etc
-	// then substitute that.
-
-	// === The proper way ===
-	//
-	// const char *prefix = "try { return ";
-	// char suffix[47];
-	// sprintf(suffix, "; } catch (\\Throwable $e) { return %i; } ?>", id);
-	//
-	// printf("ZEND_AST_CONDITIONAL: %i\n", ZEND_AST_CONDITIONAL);
-	// printf("ZEND_AST_AND: %i\n", ZEND_AST_AND);
-	// printf("ZEND_AST_ASSIGN: %i\n", ZEND_AST_ASSIGN);
-	// printf("ZEND_AST_VAR: %i\n", ZEND_AST_VAR);
-	// printf("ZEND_AST_INCLUDE_OR_EVAL: %i\n", ZEND_AST_INCLUDE_OR_EVAL);
-	// printf("ZEND_EVAL: %i\n", ZEND_EVAL);
-	// printf("ZEND_IS_IDENTICAL: %i\n", ZEND_IS_IDENTICAL);
-	//
-	// /* ($_exco = eval(...) && $_exco == id) ? RHS : $_exco; */
-	//
-	// zend_ast *exco = zend_ast_create(ZEND_AST_VAR,
-	// 	zend_ast_create_znode(
-	// 		"_exco"));
-	//
-	// ast->child[0] = zend_ast_create(ZEND_AST_AND,
-	// 		zend_ast_create(ZEND_AST_ASSIGN,
-	// 			exco,
-	// 			zend_ast_create_ex(ZEND_AST_INCLUDE_OR_EVAL, ZEND_EVAL,
-	// 				zend_ast_create_zval_from_str(
-	// 					zend_ast_export(prefix, lhs, suffix)))),
-	// 		zend_ast_create_binary_op(ZEND_IS_IDENTICAL,
-	// 			exco,
-	// 			zend_ast_create_zval_from_long(id)));
-	//
-	// ast->child[2] = exco;
-	//
-	// zend_ast_destroy(lhs);
-	// zend_compile_conditional(result, ast);
-
+	ast->child[0] = lhs_eval;
+	ast->child[1] = rhs_eval;
+	zend_compile_coalesce(result, ast);
 }
 /* }}} */
 
